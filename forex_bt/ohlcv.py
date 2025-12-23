@@ -41,6 +41,20 @@ def resample_from_1m(df_1m: pd.DataFrame, target_tf: str) -> pd.DataFrame:
     return agg
 
 
+def _ensure_native_endian(df: pd.DataFrame, cols: tuple[str, ...]) -> pd.DataFrame:
+    """
+    Convert big-endian numeric columns (e.g. >f4 from Dukascopy bi5)
+    to native-endian so pandas groupby/resample works on Windows.
+    """
+    for c in cols:
+        if c in df.columns:
+            a = df[c].to_numpy(copy=False)
+            # '>' = big-endian, '<' = little-endian, '=' = native
+            if getattr(a.dtype, "byteorder", "=") == ">":
+                df[c] = a.byteswap().view(a.dtype.newbyteorder("="))
+    return df
+
+
 def upsert_ohlcv_from_minutes(
     root: Path,
     asset: str,
@@ -49,9 +63,18 @@ def upsert_ohlcv_from_minutes(
     total = 0
     for chunk in df_1m_chunks:
         chunk = chunk.copy()
+
+        # --- FIX: normalize endian once, early ---
+        chunk = _ensure_native_endian(
+            chunk,
+            ("Open", "High", "Low", "Close", "Volume"),
+        )
+
         chunk["datetime"] = pd.to_datetime(chunk["datetime"], utc=True)
         total += parquet_upsert(root, asset, "1m", chunk)
+
     return total
+
 
 
 def resample_and_store(
