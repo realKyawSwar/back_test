@@ -2,14 +2,44 @@ from __future__ import annotations
 
 import importlib.util
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
 LOG = logging.getLogger(__name__)
 
 
+def _date_to_str(date: datetime | str | None) -> str:
+    """
+    Dukascopy script expects YYYY-MM-DD strings. Accept datetime/str/None and
+    return the string form ("" means "up to now").
+    """
+
+    if date is None:
+        return ""
+    if isinstance(date, str):
+        return date
+    return date.strftime("%Y-%m-%d")
+
+
+def _normalize_path(path: Path) -> str:
+    """Convert paths to forward slashes with a trailing slash for the script globals."""
+
+    normalized = path.as_posix().replace("\\", "/")
+    if not normalized.endswith("/"):
+        normalized += "/"
+    return normalized
+
+
 class DukascopyModule:
-    """Wrapper around the dynamically imported dukascopy-data-manager module."""
+    """
+    Adapter for the dynamically imported dukascopy-data-manager module.
+
+    The third-party script expects start/end as strings, assets as a list and
+    uses module-level DOWNLOAD_PATH/EXPORT_PATH globals. This wrapper keeps the
+    rest of the codebase using nicer types (Path, datetime) while translating to
+    the script's expectations.
+    """
 
     def __init__(self, module: Any) -> None:
         self.module = module
@@ -30,17 +60,45 @@ class DukascopyModule:
     def export_path(self, path: Path) -> None:
         setattr(self.module, "EXPORT_PATH", Path(path))
 
-    def download(self, *args: Any, **kwargs: Any) -> Any:
+    def set_paths(self, download_path: Path | None = None, export_path: Path | None = None) -> None:
+        """Optionally override dukascopy globals with normalized paths."""
+
+        if download_path is not None and hasattr(self.module, "DOWNLOAD_PATH"):
+            setattr(self.module, "DOWNLOAD_PATH", _normalize_path(download_path))
+        if export_path is not None and hasattr(self.module, "EXPORT_PATH"):
+            setattr(self.module, "EXPORT_PATH", _normalize_path(export_path))
+
+    def download(
+        self,
+        asset: str,
+        start: datetime | str,
+        end: datetime | str | None = None,
+        *,
+        concurrent: int = 0,
+        force: bool = False,
+    ) -> Any:
         func: Callable[..., Any] | None = getattr(self.module, "download", None)
         if func is None:
             raise AttributeError("dukascopy module has no 'download' function")
-        return func(*args, **kwargs)
 
-    def update(self, *args: Any, **kwargs: Any) -> Any:
+        start_str = _date_to_str(start)
+        end_str = _date_to_str(end)
+        return func([asset], start_str, end=end_str, concurrent=concurrent, force=force)
+
+    def update(
+        self,
+        asset: str,
+        start: datetime | str | None = None,
+        *,
+        concurrent: int = 0,
+        force: bool = False,
+    ) -> Any:
         func: Callable[..., Any] | None = getattr(self.module, "update", None)
         if func is None:
             raise AttributeError("dukascopy module has no 'update' function")
-        return func(*args, **kwargs)
+
+        start_str = _date_to_str(start)
+        return func([asset], start=start_str, concurrent=concurrent, force=force)
 
 
 def load_dukas_module(path: Path) -> DukascopyModule:
