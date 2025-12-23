@@ -40,8 +40,18 @@ def decode_hour_file(path: Path, origin: datetime) -> pd.DataFrame:
     if not path.exists():
         raise FileNotFoundError(path)
 
-    with lzma.open(path, "rb") as f:
-        raw = f.read()
+    # Some downloads may leave behind zero-length or otherwise invalid files.
+    # Treat them as missing data instead of aborting the whole run.
+    if path.stat().st_size == 0:
+        LOG.warning("Skipping empty hour file: %s", path)
+        return pd.DataFrame(columns=["datetime", "price", "volume"])
+
+    try:
+        with lzma.open(path, "rb") as f:
+            raw = f.read()
+    except lzma.LZMAError as exc:
+        LOG.warning("Failed to decode hour file %s: %s", path, exc)
+        return pd.DataFrame(columns=["datetime", "price", "volume"])
 
     if not raw:
         return pd.DataFrame(columns=["datetime", "price", "volume"])
