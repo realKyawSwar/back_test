@@ -66,11 +66,25 @@ def decode_hour_file(path: Path, origin: datetime) -> pd.DataFrame:
     return pd.DataFrame({"datetime": dt, "price": price, "volume": volume})
 
 
-def aggregate_ticks_to_1m(ticks: pd.DataFrame) -> pd.DataFrame:
-    if ticks.empty:
-        return pd.DataFrame(columns=["datetime", "Open", "High", "Low", "Close", "Volume"])
+def _ensure_native_endian(df: pd.DataFrame, cols: tuple[str, ...]) -> pd.DataFrame:
+    """
+    Convert big-endian numeric buffers (e.g. >f4 from Dukascopy BI5)
+    to native-endian so pandas resample/groupby works on Windows.
+    """
+    for c in cols:
+        if c in df.columns:
+            a = df[c].to_numpy(copy=False)
+            if getattr(a.dtype, "byteorder", "=") == ">":
+                df[c] = a.byteswap().view(a.dtype.newbyteorder("="))
+    return df
 
+
+def aggregate_ticks_to_1m(ticks: pd.DataFrame) -> pd.DataFrame:
     ticks = ticks.copy()
+
+    # --- FIX: make price/volume native-endian BEFORE any pandas agg ---
+    ticks = _ensure_native_endian(ticks, ("price", "volume"))
+
     ticks["datetime"] = pd.to_datetime(ticks["datetime"], utc=True)
     ticks = ticks.set_index("datetime")
 
@@ -81,7 +95,6 @@ def aggregate_ticks_to_1m(ticks: pd.DataFrame) -> pd.DataFrame:
         Close=("price", "last"),
         Volume=("volume", "sum"),
     )
-
     ohlcv = ohlcv.dropna(subset=["Open", "High", "Low", "Close"], how="any")
     ohlcv = ohlcv.reset_index()
     return ohlcv
