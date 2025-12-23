@@ -1,0 +1,7 @@
+backtesting
+numpy
+pandas
+pyarrow
+requests
+rich
+typer
