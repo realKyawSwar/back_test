@@ -46,18 +46,19 @@ def download_data(
     download_path: Path = typer.Option(Path("download"), help="Download directory"),
 ):
     start_dt = _parse_date(start)
-    end_dt = _parse_date(end) if end else datetime.utcnow().replace(tzinfo=timezone.utc)
+    end_dt = _parse_date(end) if end else None
 
     duka = load_dukas_module(duka_script)
-    duka.download_path = download_path
+    duka.set_paths(download_path=download_path)
 
     console.print(f"[bold]Using dukascopy script:[/bold] {duka_script}")
     for asset in assets:
-        console.print(f"[cyan]Fetching {asset} from {start_dt.date()} to {end_dt.date()}[/cyan]")
+        end_display = end_dt.date() if end_dt else "now"
+        console.print(f"[cyan]Fetching {asset} from {start_dt.date()} to {end_display}[/cyan]")
         if update:
-            duka.update(asset, start_dt, end_dt)  # type: ignore[arg-type]
+            duka.update(asset, start_dt)
         else:
-            duka.download(asset, start_dt, end_dt)  # type: ignore[arg-type]
+            duka.download(asset, start_dt, end_dt)
 
 
 @app.command("resample-and-store")
