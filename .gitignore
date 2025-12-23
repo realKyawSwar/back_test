@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.pyo
+*.pyd
+
+# Virtual envs
+.venv/
+venv/
+.env
+.envrc
+
+# Editors/OS
+.DS_Store
+.vscode/
+.idea/
+
+# Data outputs
+/download/
+/data_parquet/
+/export/
