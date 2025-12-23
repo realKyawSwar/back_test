@@ -8,20 +8,32 @@ Parquet-first, modular Forex backtesting pipeline built around Dukascopy tick da
 - **Typer CLI** for downloads, resampling, and running sample strategies.
 - **backtesting.py integration** with an example SMA crossover strategy.
 
-## Requirements
-Pre-install the following Python packages (no inline installers are used):
+## Installation
+1. Clone the repo and move into it:
+   ```
+   git clone <repo-url>
+   cd back_test
+   ```
+
+2. Create and activate a Python environment (recommended):
+   ```
+   python -m venv .venv
+   source .venv/bin/activate
+   ```
+
+3. Install the Python dependencies from `requirements.txt`:
+   ```
+   pip install -r requirements.txt
+   ```
+
+## Running the CLI
+All commands are exposed via `forex_backtester.py`, which delegates to the Typer app in `forex_bt.cli`. Use `--help` to explore subcommands:
 
 ```
-typer
-rich
-pandas
-numpy
-pyarrow
-requests
-backtesting
+python forex_backtester.py --help
 ```
 
-## Quickstart
+### Workflow
 1) Download Dukascopy ticks (requires `dukascopy-data-manager.py` in the repo):
 ```
 python forex_backtester.py download-data EURUSD --start 2023-01-01 --duka-script dukascopy-data-manager.py --download-path download
@@ -36,6 +48,11 @@ python forex_backtester.py resample-and-store EURUSD --start 2023-01-01 --timefr
 ```
 python forex_backtester.py backtest-strategy EURUSD --timeframe 1h --start 2023-02-01 --end 2023-03-01 --fast 20 --slow 50 --parquet-root data_parquet
 ```
+
+### Additional tips
+- The downloaded tick CSVs in `--download-path` are read incrementally; you can rerun resampling to refresh only the latest partitions.
+- Use the `--timeframes` flag on `resample-and-store` to control which bars are produced from the 1m base bars.
+- Pass `--parquet-root` to point at an existing Parquet store if you already have one; the layout is shown below.
 
 ## Storage layout
 Bars are partitioned for efficient selective reading:
