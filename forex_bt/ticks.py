@@ -140,7 +140,8 @@ def _iter_missing_minutes_for_hour(download_root: Path, asset: str, origin: date
         return
 
     bars = aggregate_ticks_to_1m(ticks)
-    present = set(pd.to_datetime(bars["datetime"], utc=True).to_pydatetime())
+    # Convert to tz-aware Python datetimes for set membership checks
+    present = set(pd.to_datetime(bars["datetime"], utc=True).dt.to_pydatetime())
     for m in range(60):
         ts = origin + timedelta(minutes=m)
         if ts not in present:
