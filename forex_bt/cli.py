@@ -70,6 +70,8 @@ def resample_and_store_cmd(
     download_path: Path = typer.Option(Path("download"), help="Tick download root"),
     parquet_root: Path = typer.Option(Path("data_parquet"), help="Parquet root"),
     skip_1m: bool = typer.Option(False, help="Skip building 1m from ticks; only resample existing 1m"),
+    log_missing: bool = typer.Option(True, help="Log missing minutes/hours to gaps directory during 1m build"),
+    gaps_root: Path = typer.Option(Path("gaps"), help="Directory to write missing timeframe logs"),
 ):
     for tf in timeframes:
         if tf not in SUPPORTED_TFS:
@@ -101,6 +103,12 @@ def resample_and_store_cmd(
                 wrote_1m = upsert_ohlcv_from_minutes(parquet_root, asset, df_stream)
                 progress.update(t1, completed=1)
                 console.print(f"[green]1m bars written:[/green] {wrote_1m}")
+
+                # Optionally log missing minutes/hours for later backfill from other sources
+                if log_missing:
+                    from .ticks import write_gaps_logs
+                    min_count, hr_count = write_gaps_logs(download_path, asset, hour_start, end_dt, gaps_root)
+                    console.print(f"[yellow]Logged missing[/yellow] minutes={min_count:,}, hours={hr_count:,} under {gaps_root}/asset={asset}")
             else:
                 console.print(f"[yellow]Skipping 1m build for {asset}[/yellow] (skip_1m={skip_1m}, last_1m={'present' if last_1m else 'absent'})")
 

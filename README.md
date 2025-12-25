@@ -49,6 +49,14 @@ If you already have 1m bars and only want to convert minute → hour (without re
 python forex_backtester.py resample-and-store EURUSD --start 2023-01-01 --timeframes 1h 1D --parquet-root data_parquet --skip-1m
 ```
 
+When building 1m from Dukascopy ticks, you can automatically log missing timeframes (for later backfill from another source) by keeping `--log-missing` enabled (default) and specifying the date range:
+```
+python forex_backtester.py resample-and-store EURUSD --start 2023-01-01 --timeframes 1m 1h --download-path download --parquet-root data_parquet --log-missing --gaps-root gaps
+```
+This will append CSVs:
+- `gaps/asset=EURUSD/missing_hours.csv` — hour files missing or undecodable
+- `gaps/asset=EURUSD/missing_minutes.csv` — exact 1m timestamps missing (UTC)
+
 3) Run the example SMA crossover backtest using Parquet data:
 ```
 python forex_backtester.py backtest-strategy EURUSD --timeframe 1h --start 2023-02-01 --end 2023-03-01 --fast 20 --slow 50 --parquet-root data_parquet
@@ -79,4 +87,5 @@ Each Parquet file stores columns: `datetime` (UTC), `Open`, `High`, `Low`, `Clos
 ## Notes
 - All timestamps are handled as UTC internally. backtesting.py uses tz-naive indexes so the loader drops timezone information after selection.
 - Missing tick hours are skipped with warnings so long downloads continue uninterrupted.
+- Missing timeframes are logged under `--gaps-root` when `--log-missing` is enabled.
 - The original `forex_backtester.py` remains the entrypoint and simply delegates to the new `forex_bt.cli` Typer app.

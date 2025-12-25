@@ -117,3 +117,89 @@ def stream_aggregate_1m(
         minute_bars = aggregate_ticks_to_1m(ticks)
         if not minute_bars.empty:
             yield minute_bars
+
+
+def _iter_missing_minutes_for_hour(download_root: Path, asset: str, origin: datetime) -> Iterable[datetime]:
+    """Yield missing minute timestamps (UTC) for the given hour.
+
+    - If the hour file is missing or empty/undecodable, yield all 60 minutes.
+    - Otherwise aggregate ticks to 1m and yield any minute within the hour with no bar.
+    """
+    path = dukascopy_hour_path(download_root, asset, origin)
+    try:
+        ticks = decode_hour_file(path, origin)
+    except FileNotFoundError:
+        # Entire hour missing
+        for m in range(60):
+            yield origin + timedelta(minutes=m)
+        return
+
+    if ticks.empty:
+        for m in range(60):
+            yield origin + timedelta(minutes=m)
+        return
+
+    bars = aggregate_ticks_to_1m(ticks)
+    present = set(pd.to_datetime(bars["datetime"], utc=True).to_pydatetime())
+    for m in range(60):
+        ts = origin + timedelta(minutes=m)
+        if ts not in present:
+            yield ts
+
+
+def iter_missing_minutes(download_root: Path, asset: str, start: datetime, end: datetime) -> Generator[datetime, None, None]:
+    """Yield all missing minute timestamps (UTC) between start and end (inclusive)."""
+    cur = start.replace(minute=0, second=0, microsecond=0)
+    while cur <= end:
+        for ts in _iter_missing_minutes_for_hour(download_root, asset, cur.replace(tzinfo=timezone.utc)):
+            yield ts
+        cur += timedelta(hours=1)
+
+
+def iter_missing_hours(download_root: Path, asset: str, start: datetime, end: datetime) -> Generator[datetime, None, None]:
+    """Yield origin timestamps (UTC) for any missing/empty hour files."""
+    for origin, path in iter_hour_paths(download_root, asset, start, end):
+        missing = False
+        if not path.exists() or (path.exists() and path.stat().st_size == 0):
+            missing = True
+        else:
+            try:
+                _ = decode_hour_file(path, origin.replace(tzinfo=timezone.utc))
+            except Exception:
+                missing = True
+        if missing:
+            yield origin.replace(tzinfo=timezone.utc)
+
+
+def write_gaps_logs(download_root: Path, asset: str, start: datetime, end: datetime, gaps_root: Path) -> Tuple[int, int]:
+    """Write CSV logs of missing minutes and hours under gaps_root/asset=<ASSET>/.
+
+    Returns: (missing_minutes_count, missing_hours_count)
+    """
+    gaps_dir = Path(gaps_root) / f"asset={asset}"
+    gaps_dir.mkdir(parents=True, exist_ok=True)
+
+    minutes_path = gaps_dir / "missing_minutes.csv"
+    hours_path = gaps_dir / "missing_hours.csv"
+
+    # Append to existing logs to accumulate over multiple runs
+    min_written = 0
+    hr_written = 0
+
+    # Hours first (smaller set)
+    with hours_path.open("a", encoding="utf-8") as fhrs:
+        # Write header if new file
+        if hours_path.stat().st_size == 0:
+            fhrs.write("datetime\n")
+        for ts in iter_missing_hours(download_root, asset, start, end):
+            fhrs.write(f"{ts.isoformat()}\n")
+            hr_written += 1
+
+    with minutes_path.open("a", encoding="utf-8") as fmin:
+        if minutes_path.stat().st_size == 0:
+            fmin.write("datetime\n")
+        for ts in iter_missing_minutes(download_root, asset, start, end):
+            fmin.write(f"{ts.isoformat()}\n")
+            min_written += 1
+
+    return min_written, hr_written
