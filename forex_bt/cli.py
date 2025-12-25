@@ -69,6 +69,7 @@ def resample_and_store_cmd(
     timeframes: List[str] = typer.Option(..., help="Target timeframes (include 1m if desired)"),
     download_path: Path = typer.Option(Path("download"), help="Tick download root"),
     parquet_root: Path = typer.Option(Path("data_parquet"), help="Parquet root"),
+    skip_1m: bool = typer.Option(False, help="Skip building 1m from ticks; only resample existing 1m"),
 ):
     for tf in timeframes:
         if tf not in SUPPORTED_TFS:
@@ -87,16 +88,21 @@ def resample_and_store_cmd(
         for asset in assets:
             console.rule(f"[bold blue]{asset}[/bold blue]")
 
+            # Build/refresh 1m bars from ticks only if requested or missing
             last_1m = parquet_get_last_timestamp(parquet_root, asset, "1m")
-            hour_start = start_dt
-            if last_1m:
-                hour_start = max(hour_start, last_1m.replace(minute=0, second=0, microsecond=0))
+            do_build_1m = ("1m" in timeframes) or (last_1m is None and not skip_1m)
+            if not skip_1m and do_build_1m:
+                hour_start = start_dt
+                if last_1m:
+                    hour_start = max(hour_start, last_1m.replace(minute=0, second=0, microsecond=0))
 
-            t1 = progress.add_task(f"Building 1m for {asset}")
-            df_stream = stream_aggregate_1m(download_path, asset, hour_start, end_dt)
-            wrote_1m = upsert_ohlcv_from_minutes(parquet_root, asset, df_stream)
-            progress.update(t1, completed=1)
-            console.print(f"[green]1m bars written:[/green] {wrote_1m}")
+                t1 = progress.add_task(f"Building 1m for {asset}")
+                df_stream = stream_aggregate_1m(download_path, asset, hour_start, end_dt)
+                wrote_1m = upsert_ohlcv_from_minutes(parquet_root, asset, df_stream)
+                progress.update(t1, completed=1)
+                console.print(f"[green]1m bars written:[/green] {wrote_1m}")
+            else:
+                console.print(f"[yellow]Skipping 1m build for {asset}[/yellow] (skip_1m={skip_1m}, last_1m={'present' if last_1m else 'absent'})")
 
             higher_tfs = [tf for tf in timeframes if tf != "1m"]
             if not higher_tfs:

@@ -44,6 +44,11 @@ python forex_backtester.py download-data EURUSD --start 2023-01-01 --duka-script
 python forex_backtester.py resample-and-store EURUSD --start 2023-01-01 --timeframes 1m 1h 1D --download-path download --parquet-root data_parquet
 ```
 
+If you already have 1m bars and only want to convert minute → hour (without reading tick hour files), use `--skip-1m`:
+```
+python forex_backtester.py resample-and-store EURUSD --start 2023-01-01 --timeframes 1h 1D --parquet-root data_parquet --skip-1m
+```
+
 3) Run the example SMA crossover backtest using Parquet data:
 ```
 python forex_backtester.py backtest-strategy EURUSD --timeframe 1h --start 2023-02-01 --end 2023-03-01 --fast 20 --slow 50 --parquet-root data_parquet
@@ -53,6 +58,7 @@ python forex_backtester.py backtest-strategy EURUSD --timeframe 1h --start 2023-
 - The downloaded tick CSVs in `--download-path` are read incrementally; you can rerun resampling to refresh only the latest partitions.
 - Use the `--timeframes` flag on `resample-and-store` to control which bars are produced from the 1m base bars.
 - Pass `--parquet-root` to point at an existing Parquet store if you already have one; the layout is shown below.
+ - Use `--skip-1m` to avoid reading tick hour files and resample from existing 1m data only.
 
 ## Storage layout
 Bars are partitioned for efficient selective reading:
